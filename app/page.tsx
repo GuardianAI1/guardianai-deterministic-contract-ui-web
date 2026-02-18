@@ -655,13 +655,18 @@ export default function HomePage() {
   }, [apiKey]);
 
   async function requestLLM(prompt: string, opts?: { maxTokens?: number; systemPrompt?: string; temperature?: number }) {
+    const requestApiKey = normalizeApiKeyInput(apiKeyInputRef.current?.value ?? apiKey);
+    if (requestApiKey !== apiKey) {
+      setApiKey(requestApiKey);
+    }
+
     const response = await requestJSON<{ content: string }>("/api/llm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: effectiveModel,
         prompt,
-        apiKey,
+        apiKey: requestApiKey,
         providerPreference: apiProvider,
         temperature: opts?.temperature ?? llmTemperature,
         maxTokens: opts?.maxTokens ?? llmMaxTokens,
