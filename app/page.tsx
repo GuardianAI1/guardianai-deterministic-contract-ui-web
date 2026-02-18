@@ -433,7 +433,7 @@ export default function HomePage() {
     adversarialScripts.includes(DEFAULT_SCRIPT_ID) ? DEFAULT_SCRIPT_ID : adversarialScripts[0]
   );
   const [selectedSize, setSelectedSize] = useState<number>(0);
-  const [apiProvider, setApiProvider] = useState<APIProvider>("auto");
+  const [apiProvider, setApiProvider] = useState<APIProvider>("together");
   const [apiKey, setApiKey] = useState<string>("");
   const [llmTemperature, setLlmTemperature] = useState<number>(0);
   const [guardianTemperature, setGuardianTemperature] = useState<number>(0);
@@ -1080,7 +1080,7 @@ export default function HomePage() {
   }
 
   const keyStatusLabel = !apiKey.trim()
-    ? "No key"
+    ? "Server Env / None"
     : apiProvider === "auto"
       ? detectedKeyProvider
         ? providerOptions.find((item) => item.value === detectedKeyProvider)?.label ?? "Detected"

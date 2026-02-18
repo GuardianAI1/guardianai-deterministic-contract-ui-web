@@ -119,23 +119,44 @@ export async function POST(request: NextRequest) {
     let content = "";
 
     if (provider === "together") {
-      const payload = await postJson("https://api.together.xyz/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: prompt }
-          ],
-          temperature,
-          max_tokens: maxTokens,
-          stream: false
-        })
-      });
+      const requestTogether = async (keyToUse: string) =>
+        postJson("https://api.together.xyz/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${keyToUse}`
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: prompt }
+            ],
+            temperature,
+            max_tokens: maxTokens,
+            stream: false
+          })
+        });
+
+      const serverTogetherKey = nonEmpty(process.env.TOGETHER_API_KEY);
+      let payload: unknown;
+      try {
+        payload = await requestTogether(apiKey);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const shouldFallbackToServerKey =
+          resolvedKeySource === "client" &&
+          Boolean(serverTogetherKey) &&
+          serverTogetherKey !== apiKey &&
+          message.includes("invalid_api_key");
+
+        if (!shouldFallbackToServerKey) {
+          throw error;
+        }
+
+        payload = await requestTogether(serverTogetherKey as string);
+        resolvedKeySource = "server_env";
+      }
 
       content = (payload as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]?.message?.content ?? "";
     } else if (provider === "openAI") {
@@ -255,8 +276,13 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     let message = error instanceof Error ? error.message : "Unknown error";
+    const isTogetherInvalidKey =
+      resolvedProvider === "together" && typeof message === "string" && message.includes("invalid_api_key");
     const isOpenAIInvalidKey =
       resolvedProvider === "openAI" && typeof message === "string" && message.includes("invalid_api_key");
+    if (isTogetherInvalidKey && resolvedKeySource === "client" && nonEmpty(process.env.TOGETHER_API_KEY)) {
+      message += " Tip: clear the UI API Key field to use server TOGETHER_API_KEY, or paste the exact same key configured in Vercel.";
+    }
     if (isOpenAIInvalidKey && resolvedKeySource === "client" && nonEmpty(process.env.OPENAI_API_KEY)) {
       message += " Tip: clear the UI API Key field to use server OPENAI_API_KEY, or paste the exact same key you validated in terminal.";
     }
