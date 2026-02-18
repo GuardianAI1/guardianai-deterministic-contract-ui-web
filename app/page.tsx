@@ -1129,8 +1129,18 @@ export default function HomePage() {
             </select>
           </div>
 
-          <div className="field-block wide">
-            <label>API Key</label>
+          <div className="field-block wide key-field">
+            <div className="field-label-row">
+              <label>API Key</label>
+              <button
+                type="button"
+                className="text-action inline-action"
+                onClick={() => setApiKey("")}
+                title="Clear API key and use server default key"
+              >
+                Use Default Server Key
+              </button>
+            </div>
             <input
               ref={apiKeyInputRef}
               type="password"
@@ -1150,16 +1160,6 @@ export default function HomePage() {
               data-lpignore="true"
               placeholder="Enter API key or rely on server env key"
             />
-            <div className="field-inline-actions">
-              <button
-                type="button"
-                className="text-action"
-                onClick={() => setApiKey("")}
-                title="Clear API key and use server default key"
-              >
-                Use Default Server Key
-              </button>
-            </div>
           </div>
 
           <div className="status-box">
