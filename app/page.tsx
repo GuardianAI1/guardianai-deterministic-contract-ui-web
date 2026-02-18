@@ -1443,7 +1443,10 @@ export default function HomePage() {
                 height={34}
                 className="raw-live-logo"
               />
-              <h3>GuardianAI Deterministic Contract Instrument</h3>
+              <div>
+                <h3>GuardianAI Deterministic Contract Compliance Test</h3>
+                <p className="raw-live-subtitle">Contract compliance lab (not a reasoning benchmark)</p>
+              </div>
             </div>
             <div className="raw-live-head-meta">
               <span>Raw-byte strict mode</span>

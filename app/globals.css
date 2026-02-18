@@ -381,6 +381,13 @@ button:disabled {
   font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
 }
 
+.raw-live-subtitle {
+  margin: 2px 0 0;
+  color: #5b665e;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
 .raw-live-head-meta {
   display: grid;
   justify-items: end;
