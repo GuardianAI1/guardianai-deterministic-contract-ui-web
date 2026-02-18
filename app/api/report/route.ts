@@ -45,6 +45,14 @@ function sameSingleLabel(expected: string, observed: string | null): boolean {
   return observed === expected;
 }
 
+function parsePromptCount(promptCount?: string): number | null {
+  if (!promptCount) return null;
+  const digits = promptCount.trim().match(/^\d+$/);
+  if (!digits) return null;
+  const value = Number.parseInt(digits[0], 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as { snapshot?: ExportSnapshot };
@@ -140,7 +148,28 @@ export async function POST(request: NextRequest) {
         ? "Formatting-vs-semantic strict-failure decomposition unavailable."
         : `${pct(formattingDominatedShare)} of strict failures are formatting/instruction-spillover artifacts; ${pct(
             safeRate(semanticOnlyFailureCount, rawFailureCount)
-          )} are semantic errors.`;
+          )} are label-level semantic errors.`;
+
+    const plannedTurnsFromPromptSelection = parsePromptCount(snapshot.promptCount);
+    const plannedTurns =
+      snapshot.brutalRepetitionCount ??
+      plannedTurnsFromPromptSelection ??
+      (snapshot.promptCount.toLowerCase().includes("all") ? scriptProof?.scriptLineCount ?? null : null);
+    const terminationStatus =
+      metrics.turns === 0
+        ? "No turns executed."
+        : plannedTurns
+          ? metrics.turns >= plannedTurns
+            ? `Scripted run completed at turn ${metrics.turns}/${plannedTurns}.`
+            : `Run stopped early at turn ${metrics.turns}/${plannedTurns} (operator stop, API failure, or guard interruption).`
+          : `Run ended at turn ${metrics.turns}; planned turn total unavailable in snapshot metadata.`;
+
+    const rawFailureCi = ci95(rawFailureRate, comparableCount);
+    const trimmedFailureCi = ci95(trimmedFailureRate, comparableCount);
+    const firstLabelFailureCi = singleLabelCount > 0 ? ci95(firstLabelFailureRate, singleLabelCount) : "N/A";
+    const semanticOnlyDenominator =
+      singleLabelCount === comparableCount && singleLabelCount > 0 ? singleLabelCount : metrics.turns;
+    const semanticOnlyFailureCi = ci95(semanticOnlyFailureRate, semanticOnlyDenominator);
 
     const markdown = isBrutal
       ? `## Deterministic JSON Contract Lab - Brutal v2 (Nested)
@@ -235,9 +264,17 @@ To decompose strict failures, we apply post-hoc analytical comparators to stored
 | Raw Byte-Exact (enforcing) | ${pct(rawFailureRate)} | Strict deterministic contract compliance. |
 | Trimmed Exact (analysis-only) | ${pct(trimmedFailureRate)} | Removes leading/trailing whitespace and newline artifacts only. |
 | First-Label Extraction (analysis-only) | ${singleLabelCount > 0 ? pct(firstLabelFailureRate) : "N/A"} | Extracts the first label token (${singleLabelCount > 0 ? "A-Z/0-9" : "not applicable"}) to remove instruction spillover. |
-| Semantic-Only Proxy (analysis-only) | ${pct(semanticOnlyFailureRate)} | Label-level correctness after non-semantic formatting effects are discounted. |
+| Semantic-Only Proxy (analysis-only) | ${pct(semanticOnlyFailureRate)} | Contract-label correctness proxy after non-semantic formatting effects are discounted (not a deep reasoning benchmark). |
+
+| Comparator Layer | 95% CI |
+| --- | --- |
+| Raw Byte-Exact (enforcing) | ${rawFailureCi} |
+| Trimmed Exact (analysis-only) | ${trimmedFailureCi} |
+| First-Label Extraction (analysis-only) | ${firstLabelFailureCi} |
+| Semantic-Only Proxy (analysis-only) | ${semanticOnlyFailureCi} |
 
 - ${strictFailureDriverLine}
+- Semantic-only proxy in this report measures expected contract-label agreement, not broad reasoning depth.
 
 ## Violation Taxonomy
 - Exact match (final): ${(metrics.turns || 0) - metrics.rawByteMismatchCount}
@@ -256,7 +293,7 @@ ${ledger || "- No turns recorded."}
 - Assisted mode measures corrective power under a capped retry budget.
 - No infinite retry loop is used; retry budget is bounded at ${assistedRetryCap || 0}.
 
-Termination Cause: ${metrics.turns === 0 ? "No turns executed" : "Run stopped after scripted loop completion or operator stop."}
+Termination Status: ${terminationStatus}
 `;
 
     return NextResponse.json({ markdown });
