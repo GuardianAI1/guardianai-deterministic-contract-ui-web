@@ -160,12 +160,16 @@ export async function POST(request: NextRequest) {
 
       content = (payload as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]?.message?.content ?? "";
     } else if (provider === "openAI") {
+      const openAIOrganization = nonEmpty(process.env.OPENAI_ORGANIZATION);
+      const openAIProject = nonEmpty(process.env.OPENAI_PROJECT);
       const requestOpenAI = async (keyToUse: string) =>
         postJson("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${keyToUse}`
+            Authorization: `Bearer ${keyToUse}`,
+            ...(openAIOrganization ? { "OpenAI-Organization": openAIOrganization } : {}),
+            ...(openAIProject ? { "OpenAI-Project": openAIProject } : {})
           },
           body: JSON.stringify({
             model,
@@ -291,7 +295,8 @@ export async function POST(request: NextRequest) {
       if (nonEmpty(process.env.OPENAI_API_KEY)) {
         message += " Tip: clear the UI API Key field to use server OPENAI_API_KEY, or paste the exact same key you validated in terminal.";
       } else {
-        message += " Tip: the OpenAI key entered in UI is invalid/revoked. Use a Platform key from https://platform.openai.com/api-keys or configure OPENAI_API_KEY in Vercel.";
+        message +=
+          " Tip: the OpenAI key entered in UI is invalid/revoked for this request context. Use a Platform key from https://platform.openai.com/api-keys or configure OPENAI_API_KEY in Vercel. If key works locally but fails on Vercel, check OpenAI project/org settings and any IP allowlist.";
       }
     }
     return NextResponse.json({ error: message }, { status: 500 });

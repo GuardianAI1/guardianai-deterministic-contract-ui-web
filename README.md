@@ -37,6 +37,8 @@ This is a web migration of the macOS SwiftUI Deterministic Contract Lab.
 - Optional server-side default keys:
   - `TOGETHER_API_KEY`
   - `OPENAI_API_KEY`
+  - `OPENAI_ORGANIZATION` (optional)
+  - `OPENAI_PROJECT` (optional)
   - `ANTHROPIC_API_KEY`
   - `GOOGLE_API_KEY`
   - `MISTRAL_API_KEY`
