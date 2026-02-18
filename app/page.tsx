@@ -321,10 +321,29 @@ Provide the minimal externalizable constraint set now.`;
 }
 
 async function requestJSON<T>(url: string, init: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    cache: "no-store"
-  });
+  let response: Response | null = null;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await fetch(url, {
+        ...init,
+        cache: "no-store"
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 1) {
+        await sleep(300);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (!response) {
+    throw (lastError instanceof Error ? lastError : new Error("Failed to fetch"));
+  }
 
   const text = await response.text();
   let payload: Record<string, unknown> = {};
@@ -1115,6 +1134,7 @@ export default function HomePage() {
             <input
               ref={apiKeyInputRef}
               type="password"
+              name="guardian_api_key_input"
               value={apiKey}
               onChange={(event) => setNormalizedApiKey(event.target.value)}
               onInput={(event) => setNormalizedApiKey((event.target as HTMLInputElement).value)}
@@ -1123,9 +1143,23 @@ export default function HomePage() {
                 const pasted = event.clipboardData.getData("text");
                 if (pasted) setNormalizedApiKey(pasted);
               }}
-              autoComplete="off"
+              autoComplete="new-password"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-lpignore="true"
               placeholder="Enter API key or rely on server env key"
             />
+            <div className="field-inline-actions">
+              <button
+                type="button"
+                className="text-action"
+                onClick={() => setApiKey("")}
+                title="Clear API key and use server default key"
+              >
+                Use Default Server Key
+              </button>
+            </div>
           </div>
 
           <div className="status-box">

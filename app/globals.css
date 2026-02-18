@@ -77,6 +77,11 @@ pre,
   min-width: 280px;
 }
 
+.field-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .field-block label,
 .panel-controls label,
 .signal-grid label,
@@ -185,6 +190,20 @@ button.ghost {
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.text-action {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 0;
+  text-decoration: underline;
+}
+
+.text-action:hover {
+  background: transparent;
+  color: var(--ink);
 }
 
 .pill {
