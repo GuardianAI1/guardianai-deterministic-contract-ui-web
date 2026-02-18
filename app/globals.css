@@ -520,6 +520,15 @@ button:disabled {
   gap: 8px;
 }
 
+.script-proof-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+}
+
 .turn-stream {
   overflow: auto;
   padding: 12px;

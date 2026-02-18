@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
       .join("\n");
 
     const metrics = snapshot.metrics;
+    const scriptProof = snapshot.scriptProvenance;
     const assistedEnabled = metrics.assistedEnabled ?? false;
     const assistedRetryCap = metrics.assistedRetryCap ?? 0;
     const isBrutal = snapshot.selectedScript === "json_contract_brutal_v2";
@@ -120,6 +121,10 @@ ${brutalFailureExamples || "- None"}
 - Provider preference: ${snapshot.apiProvider}
 - Resolved provider: ${snapshot.resolvedLLMProvider}
 - Script: ${snapshot.selectedScript}
+- Script path: ${line(scriptProof?.scriptPath)}
+- Script source URL: ${line(scriptProof?.scriptSourceUrl)}
+- Script SHA-256: ${line(scriptProof?.scriptSha256)}
+- Script lines: ${scriptProof?.scriptLineCount ?? "n/a"}
 - Repetitions: ${snapshot.promptCount}
 - Max tokens: ${snapshot.llmMaxTokens ?? "n/a"}
 - Effective brutal max tokens: ${effectiveBrutalMaxTokens}
@@ -139,6 +144,10 @@ ${assistedEnabled ? `- Correction success rate: ${pct(correctionSuccessRate)} ($
 - Resolved provider: ${snapshot.resolvedLLMProvider}
 - Model: ${snapshot.selectedModel}
 - Script: ${snapshot.selectedScript}
+- Script path: ${line(scriptProof?.scriptPath)}
+- Script source URL: ${line(scriptProof?.scriptSourceUrl)}
+- Script SHA-256: ${line(scriptProof?.scriptSha256)}
+- Script lines: ${scriptProof?.scriptLineCount ?? "n/a"}
 - Prompt count selection: ${snapshot.promptCount}
 - Execution mode: ${snapshot.executionMode}
 - Contract comparator: ${snapshot.contractComparator}

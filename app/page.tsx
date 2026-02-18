@@ -26,6 +26,7 @@ import type {
   ExperimentTurn,
   ExportSnapshot,
   GateState,
+  ScriptProvenance,
   ScriptPrompt
 } from "@/lib/types";
 
@@ -401,6 +402,23 @@ function downloadTextFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
+async function sha256Hex(content: string): Promise<string | undefined> {
+  if (!globalThis.crypto?.subtle) return undefined;
+  const bytes = new TextEncoder().encode(content);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function githubRawScriptUrl(repoUrl: string, scriptFileName: string): string | undefined {
+  const match = repoUrl.match(/github\.com\/([^/]+)\/([^/?#]+)/i);
+  if (!match) return undefined;
+  const owner = match[1];
+  const repo = match[2].replace(/\.git$/i, "");
+  return `https://raw.githubusercontent.com/${owner}/${repo}/main/public/scripts/${scriptFileName}`;
+}
+
 function SectionDocModal({ title, body, onClose }: { title: string; body: string; onClose: () => void }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -494,6 +512,8 @@ export default function HomePage() {
 
   const websiteURL = process.env.NEXT_PUBLIC_GUARDIAN_WEBSITE_URL?.trim() || "";
   const githubURL = process.env.NEXT_PUBLIC_GITHUB_REPO_URL?.trim() || "";
+  const scriptGithubURL =
+    selectedScript === BRUTAL_SCRIPT_ID || !githubURL ? "" : (githubRawScriptUrl(githubURL, selectedScript) ?? "");
   const isBrutalScript = selectedScript === BRUTAL_SCRIPT_ID;
 
   const detectedKeyProvider = useMemo(() => detectKeyProvider(apiKey), [apiKey]);
@@ -977,7 +997,46 @@ export default function HomePage() {
     setGuardianCloudConnected(false);
   }
 
-  function buildSnapshot(): ExportSnapshot {
+  async function buildScriptProvenance(): Promise<ScriptProvenance> {
+    if (selectedScript === BRUTAL_SCRIPT_ID) {
+      const repetitions = Math.max(4, Math.min(10_000, Math.floor(brutalRepetitionCount)));
+      return {
+        scriptId: BRUTAL_SCRIPT_ID,
+        scriptLabel: "Deterministic JSON Contract Lab (Brutal v2)",
+        scriptPath: "generated-in-app",
+        scriptLineCount: repetitions
+      };
+    }
+
+    const scriptPath = `public/scripts/${selectedScript}`;
+    const sourceUrl = scriptGithubURL || undefined;
+    const response = await fetch(`/scripts/${selectedScript}`, { cache: "no-store" });
+    if (!response.ok) {
+      return {
+        scriptId: selectedScript,
+        scriptLabel: scriptLabels[selectedScript] ?? selectedScript,
+        scriptPath,
+        scriptSourceUrl: sourceUrl
+      };
+    }
+
+    const content = await response.text();
+    const lineCount = content
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0).length;
+
+    return {
+      scriptId: selectedScript,
+      scriptLabel: scriptLabels[selectedScript] ?? selectedScript,
+      scriptPath,
+      scriptSourceUrl: sourceUrl,
+      scriptLineCount: lineCount,
+      scriptSha256: await sha256Hex(content)
+    };
+  }
+
+  function buildSnapshotBase(): ExportSnapshot {
     const snapshotRawByteMismatchCount = isBrutalScript ? brutalRawByteMismatchCount : deterministicViolationCount;
     const snapshotRawByteMismatchRate = isBrutalScript ? brutalRawByteMismatchRate : deterministicViolationRate;
     const snapshotFormatOnlyMismatchCount = isBrutalScript
@@ -1075,9 +1134,45 @@ export default function HomePage() {
     };
   }
 
-  function exportRunSnapshot() {
-    const snapshot = buildSnapshot();
-    downloadTextFile("guardianai_export.json", JSON.stringify(snapshot, null, 2), "application/json");
+  async function buildSnapshotWithProvenance(): Promise<ExportSnapshot> {
+    const snapshot = buildSnapshotBase();
+    return {
+      ...snapshot,
+      scriptProvenance: await buildScriptProvenance()
+    };
+  }
+
+  async function exportRunSnapshot() {
+    try {
+      const snapshot = await buildSnapshotWithProvenance();
+      downloadTextFile("guardianai_export.json", JSON.stringify(snapshot, null, 2), "application/json");
+    } catch (error) {
+      setErrorMessage(`Export failed: ${error instanceof Error ? error.message : "Unknown"}`);
+    }
+  }
+
+  async function downloadActiveScript() {
+    setErrorMessage(null);
+
+    try {
+      if (selectedScript === BRUTAL_SCRIPT_ID) {
+        const repetitions = Math.max(4, Math.min(10_000, Math.floor(brutalRepetitionCount)));
+        const generatedPrompts = generateBrutalPrompts(repetitions);
+        const jsonl = `${generatedPrompts.map((prompt) => JSON.stringify(prompt)).join("\n")}\n`;
+        downloadTextFile(`generated_${BRUTAL_SCRIPT_ID}.jsonl`, jsonl, "application/x-ndjson");
+        return;
+      }
+
+      const response = await fetch(`/scripts/${selectedScript}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Unable to download ${selectedScript}`);
+      }
+
+      const content = await response.text();
+      downloadTextFile(selectedScript, content, "application/x-ndjson");
+    } catch (error) {
+      setErrorMessage(`Script download failed: ${error instanceof Error ? error.message : "Unknown"}`);
+    }
   }
 
   async function generateLabReport() {
@@ -1087,7 +1182,7 @@ export default function HomePage() {
     setErrorMessage(null);
 
     try {
-      const snapshot = buildSnapshot();
+      const snapshot = await buildSnapshotWithProvenance();
 
       const response = await requestJSON<{ markdown: string }>("/api/report", {
         method: "POST",
@@ -1192,6 +1287,7 @@ export default function HomePage() {
         <div className="right-toolbar">
           <div className="row-actions">
             <button onClick={exportRunSnapshot}>Export JSON</button>
+            <button onClick={downloadActiveScript}>Download Active Script</button>
             <button onClick={generateLabReport} disabled={turns.length === 0 || isGeneratingLabReport}>
               {isGeneratingLabReport ? "Generating..." : "Generate Lab Report"}
             </button>
@@ -1601,6 +1697,15 @@ export default function HomePage() {
                 ))}
               </select>
             )}
+
+            <div className="script-proof-line tiny">
+              <span>Script file: {isBrutalScript ? "generated-in-app" : `public/scripts/${selectedScript}`}</span>
+              {scriptGithubURL ? (
+                <a href={scriptGithubURL} target="_blank" rel="noreferrer" className="text-action">
+                  View raw on GitHub
+                </a>
+              ) : null}
+            </div>
           </div>
 
           <div className="turn-stream">

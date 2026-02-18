@@ -113,6 +113,15 @@ export interface ExportTurn {
   telemetry?: CoreTelemetry;
 }
 
+export interface ScriptProvenance {
+  scriptId: string;
+  scriptLabel: string;
+  scriptPath: string;
+  scriptSourceUrl?: string;
+  scriptSha256?: string;
+  scriptLineCount?: number;
+}
+
 export interface ExportSnapshot {
   exportedAt: string;
   apiProvider: string;
@@ -129,6 +138,7 @@ export interface ExportSnapshot {
   contractComparator: string;
   pausePolicy: string;
   guardianEnabled: boolean;
+  scriptProvenance?: ScriptProvenance;
   metrics: ExportMetrics;
   turns: ExportTurn[];
 }

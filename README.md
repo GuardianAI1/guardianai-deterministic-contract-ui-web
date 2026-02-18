@@ -12,6 +12,8 @@ This is a web migration of the macOS SwiftUI Deterministic Contract Lab.
 - Assisted constraint proposal flow on PAUSE
 - Export snapshot JSON
 - Generate markdown lab report
+- Script provenance audit fields (path/source URL/SHA-256 in exports)
+- Download active script JSONL from UI
 - README/Core docs modals
 
 ## Run locally
