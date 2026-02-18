@@ -162,14 +162,14 @@ export async function POST(request: NextRequest) {
     } else if (provider === "openAI") {
       const openAIOrganization = nonEmpty(process.env.OPENAI_ORGANIZATION);
       const openAIProject = nonEmpty(process.env.OPENAI_PROJECT);
-      const requestOpenAI = async (keyToUse: string) =>
+      const requestOpenAI = async (keyToUse: string, includeEnvRoutingHeaders: boolean) =>
         postJson("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${keyToUse}`,
-            ...(openAIOrganization ? { "OpenAI-Organization": openAIOrganization } : {}),
-            ...(openAIProject ? { "OpenAI-Project": openAIProject } : {})
+            ...(includeEnvRoutingHeaders && openAIOrganization ? { "OpenAI-Organization": openAIOrganization } : {}),
+            ...(includeEnvRoutingHeaders && openAIProject ? { "OpenAI-Project": openAIProject } : {})
           },
           body: JSON.stringify({
             model,
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
       const serverOpenAIKey = nonEmpty(process.env.OPENAI_API_KEY);
       let payload: unknown;
       try {
-        payload = await requestOpenAI(apiKey);
+        payload = await requestOpenAI(apiKey, resolvedKeySource === "server_env");
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const shouldFallbackToServerKey =
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
           throw error;
         }
 
-        payload = await requestOpenAI(serverOpenAIKey as string);
+        payload = await requestOpenAI(serverOpenAIKey as string, true);
         resolvedKeySource = "server_env";
       }
 
