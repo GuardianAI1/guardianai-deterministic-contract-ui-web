@@ -280,11 +280,19 @@ export async function POST(request: NextRequest) {
       resolvedProvider === "together" && typeof message === "string" && message.includes("invalid_api_key");
     const isOpenAIInvalidKey =
       resolvedProvider === "openAI" && typeof message === "string" && message.includes("invalid_api_key");
-    if (isTogetherInvalidKey && resolvedKeySource === "client" && nonEmpty(process.env.TOGETHER_API_KEY)) {
-      message += " Tip: clear the UI API Key field to use server TOGETHER_API_KEY, or paste the exact same key configured in Vercel.";
+    if (isTogetherInvalidKey && resolvedKeySource === "client") {
+      if (nonEmpty(process.env.TOGETHER_API_KEY)) {
+        message += " Tip: clear the UI API Key field to use server TOGETHER_API_KEY, or paste the exact same key configured in Vercel.";
+      } else {
+        message += " Tip: the Together key entered in UI is invalid/revoked. Paste a valid Together key or configure TOGETHER_API_KEY in Vercel.";
+      }
     }
-    if (isOpenAIInvalidKey && resolvedKeySource === "client" && nonEmpty(process.env.OPENAI_API_KEY)) {
-      message += " Tip: clear the UI API Key field to use server OPENAI_API_KEY, or paste the exact same key you validated in terminal.";
+    if (isOpenAIInvalidKey && resolvedKeySource === "client") {
+      if (nonEmpty(process.env.OPENAI_API_KEY)) {
+        message += " Tip: clear the UI API Key field to use server OPENAI_API_KEY, or paste the exact same key you validated in terminal.";
+      } else {
+        message += " Tip: the OpenAI key entered in UI is invalid/revoked. Use a Platform key from https://platform.openai.com/api-keys or configure OPENAI_API_KEY in Vercel.";
+      }
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }
