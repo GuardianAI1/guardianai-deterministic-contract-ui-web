@@ -23,6 +23,28 @@ function num(value: number | null): string {
   return value === null ? "N/A" : value.toFixed(2);
 }
 
+function safeRate(numerator: number, denominator: number): number | null {
+  if (denominator <= 0) return null;
+  return numerator / denominator;
+}
+
+function expectedLiteral(value?: string | null): string {
+  return (value ?? "").trim();
+}
+
+function firstLabelFromOutput(output: string): string | null {
+  const match = output.match(/[A-Za-z0-9]/);
+  return match ? match[0] : null;
+}
+
+function sameSingleLabel(expected: string, observed: string | null): boolean {
+  if (!observed) return false;
+  if (/^[A-Za-z]$/.test(expected)) {
+    return observed.toUpperCase() === expected.toUpperCase();
+  }
+  return observed === expected;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as { snapshot?: ExportSnapshot };
@@ -83,6 +105,42 @@ export async function POST(request: NextRequest) {
         return `- Turn ${turn.turnIndex}: ${taxonomy} | expected ${line(turn.contractExpectedLiteral)} | output \`${turn.baselineOutput.slice(0, 120)}\``;
       })
       .join("\n");
+
+    const comparableTurns = turns.filter((turn) => expectedLiteral(turn.contractExpectedLiteral).length > 0);
+    const comparableCount = comparableTurns.length;
+    const rawFailureCount = comparableTurns.filter((turn) => turn.baselineOutput !== expectedLiteral(turn.contractExpectedLiteral)).length;
+    const rawFailureRate = safeRate(rawFailureCount, comparableCount);
+
+    const trimmedFailureCount = comparableTurns.filter((turn) => turn.baselineOutput.trim() !== expectedLiteral(turn.contractExpectedLiteral)).length;
+    const trimmedFailureRate = safeRate(trimmedFailureCount, comparableCount);
+
+    const singleLabelTurns = comparableTurns.filter((turn) => /^[A-Za-z0-9]$/.test(expectedLiteral(turn.contractExpectedLiteral)));
+    const singleLabelCount = singleLabelTurns.length;
+    const firstLabelFailureCount = singleLabelTurns.filter((turn) => {
+      const expected = expectedLiteral(turn.contractExpectedLiteral);
+      return !sameSingleLabel(expected, firstLabelFromOutput(turn.baselineOutput));
+    }).length;
+    const firstLabelFailureRate = safeRate(firstLabelFailureCount, singleLabelCount);
+
+    const semanticOnlyFailureCount =
+      singleLabelCount === comparableCount && singleLabelCount > 0
+        ? firstLabelFailureCount
+        : baselineHardSemanticFailureCount;
+    const semanticOnlyFailureRate =
+      singleLabelCount === comparableCount && singleLabelCount > 0
+        ? firstLabelFailureRate
+        : baselineHardSemanticFailureRate;
+
+    const formattingDominatedShare =
+      rawFailureCount > 0 && semanticOnlyFailureCount >= 0
+        ? safeRate(Math.max(rawFailureCount - semanticOnlyFailureCount, 0), rawFailureCount)
+        : null;
+    const strictFailureDriverLine =
+      formattingDominatedShare === null
+        ? "Formatting-vs-semantic strict-failure decomposition unavailable."
+        : `${pct(formattingDominatedShare)} of strict failures are formatting/instruction-spillover artifacts; ${pct(
+            safeRate(semanticOnlyFailureCount, rawFailureCount)
+          )} are semantic errors.`;
 
     const markdown = isBrutal
       ? `## Deterministic JSON Contract Lab - Brutal v2 (Nested)
@@ -166,6 +224,20 @@ ${assistedEnabled ? `- Correction success rate: ${pct(correctionSuccessRate)} ($
 | Final residual failure rate | ${pct(finalResidualFailureRate)} |
 | Retries used total | ${retriesUsedTotal} |
 | Retries used average per turn | ${num(retriesUsedAverage)} |
+
+## Layered Comparator Analysis (Post-Run, Non-Enforcing)
+To decompose strict failures, we apply post-hoc analytical comparators to stored outputs only.
+- GuardianAI production enforcement remains Raw Byte-Exact only.
+- These layers do not alter gate behavior, outputs, or stored run data.
+
+| Comparator Layer | Failure Rate | Interpretation |
+| --- | --- | --- |
+| Raw Byte-Exact (enforcing) | ${pct(rawFailureRate)} | Strict deterministic contract compliance. |
+| Trimmed Exact (analysis-only) | ${pct(trimmedFailureRate)} | Removes leading/trailing whitespace and newline artifacts only. |
+| First-Label Extraction (analysis-only) | ${singleLabelCount > 0 ? pct(firstLabelFailureRate) : "N/A"} | Extracts the first label token (${singleLabelCount > 0 ? "A-Z/0-9" : "not applicable"}) to remove instruction spillover. |
+| Semantic-Only Proxy (analysis-only) | ${pct(semanticOnlyFailureRate)} | Label-level correctness after non-semantic formatting effects are discounted. |
+
+- ${strictFailureDriverLine}
 
 ## Violation Taxonomy
 - Exact match (final): ${(metrics.turns || 0) - metrics.rawByteMismatchCount}
