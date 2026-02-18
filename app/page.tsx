@@ -1148,17 +1148,23 @@ export default function HomePage() {
             </div>
             <input
               ref={apiKeyInputRef}
-              type="password"
-              name="guardian_api_key_input"
+              type="text"
+              name="guardian_token_manual_input"
               value={apiKey}
               onChange={(event) => setNormalizedApiKey(event.target.value)}
               onInput={(event) => setNormalizedApiKey((event.target as HTMLInputElement).value)}
               onBlur={(event) => setNormalizedApiKey(event.target.value)}
               onPaste={(event) => {
+                event.preventDefault();
                 const pasted = event.clipboardData.getData("text");
-                if (pasted) setNormalizedApiKey(pasted);
+                const normalized = normalizeApiKeyInput(pasted);
+                if (apiKeyInputRef.current) {
+                  apiKeyInputRef.current.value = normalized;
+                }
+                setApiKey(normalized);
               }}
-              autoComplete="new-password"
+              autoComplete="off"
+              inputMode="text"
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
