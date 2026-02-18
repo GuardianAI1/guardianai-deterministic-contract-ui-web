@@ -93,6 +93,7 @@ async function postJson(url: string, init: RequestInit): Promise<unknown> {
 export async function POST(request: NextRequest) {
   let resolvedProvider: APIProvider | null = null;
   let resolvedKeySource: "client" | "server_env" | null = null;
+  let resolvedApiKey: string | null = null;
 
   try {
     const body = (await request.json()) as RequestBody;
@@ -104,6 +105,7 @@ export async function POST(request: NextRequest) {
     const { provider, apiKey, keySource } = resolveProviderAndKey(body);
     resolvedProvider = provider;
     resolvedKeySource = keySource;
+    resolvedApiKey = apiKey ?? null;
     if (!apiKey) {
       return NextResponse.json(
         { error: "No API key available. Provide one in UI or set server env vars." },
@@ -285,6 +287,9 @@ export async function POST(request: NextRequest) {
     const isOpenAIInvalidKey =
       resolvedProvider === "openAI" && typeof message === "string" && message.includes("invalid_api_key");
     if (isTogetherInvalidKey && resolvedKeySource === "client") {
+      if (resolvedApiKey) {
+        message += ` Debug: received key suffix ${resolvedApiKey.slice(-4)} (len ${resolvedApiKey.length}).`;
+      }
       if (nonEmpty(process.env.TOGETHER_API_KEY)) {
         message += " Tip: clear the UI API Key field to use server TOGETHER_API_KEY, or paste the exact same key configured in Vercel.";
       } else {
@@ -292,6 +297,9 @@ export async function POST(request: NextRequest) {
       }
     }
     if (isOpenAIInvalidKey && resolvedKeySource === "client") {
+      if (resolvedApiKey) {
+        message += ` Debug: received key suffix ${resolvedApiKey.slice(-4)} (len ${resolvedApiKey.length}).`;
+      }
       if (nonEmpty(process.env.OPENAI_API_KEY)) {
         message += " Tip: clear the UI API Key field to use server OPENAI_API_KEY, or paste the exact same key you validated in terminal.";
       } else {

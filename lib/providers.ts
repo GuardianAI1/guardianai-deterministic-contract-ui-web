@@ -27,8 +27,9 @@ export function normalizeApiKeyInput(rawValue: string): string {
     value = value.slice(1, -1).trim();
   }
 
-  // Keys never contain spaces/newlines/zero-width chars; strip them from pasted input.
-  return value.replace(/[\s\u200B-\u200D\uFEFF]+/g, "");
+  // Normalize and strip all separators/control chars (incl. zero-width and hidden Unicode)
+  // to avoid clipboard/manager contamination in API key fields.
+  return value.normalize("NFKC").replace(/[\p{Z}\p{C}]+/gu, "");
 }
 
 export function detectKeyProvider(apiKey: string): APIProvider | null {
