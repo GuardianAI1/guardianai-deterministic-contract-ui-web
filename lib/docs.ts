@@ -23,6 +23,16 @@ export const guardianSpecText = `Overview
 GuardianAI Core is a structural observation and gating engine.
 It produces telemetry and gate decisions derived from structural properties of model outputs.
 
+Framing
+GuardianAI doesn't detect wrong answers.
+It detects when systems close faster than their constraints justify.
+
+In deterministic contracts, this shows up instantly because the constraint is binary.
+In real pipelines, the same drift often unfolds gradually across steps and decisions.
+
+The lab demo isolates the mechanism.
+In production systems, that same dynamic can remain invisible unless something observes it.
+
 Core Design Invariants
 1. Structural Signal Basis
 2. No Semantic Interpretation

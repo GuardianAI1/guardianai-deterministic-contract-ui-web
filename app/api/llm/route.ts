@@ -12,9 +12,71 @@ type RequestBody = {
   maxTokens?: number;
 };
 
+const FETCH_TIMEOUT_MS = 30_000;
+const MAX_RETRY_ATTEMPTS = 4;
+const RETRYABLE_HTTP_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+
 function nonEmpty(value?: string): string | undefined {
   const trimmed = (value ?? "").trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "AbortError";
+}
+
+function isNetworkError(error: unknown): boolean {
+  return error instanceof TypeError;
+}
+
+function parseRetryAfterMs(rawHeader: string | null): number | null {
+  if (!rawHeader) return null;
+  const numericSeconds = Number(rawHeader);
+  if (Number.isFinite(numericSeconds) && numericSeconds >= 0) {
+    return Math.floor(numericSeconds * 1000);
+  }
+
+  const epochMs = Date.parse(rawHeader);
+  if (Number.isNaN(epochMs)) return null;
+  return Math.max(0, epochMs - Date.now());
+}
+
+function retryDelayMs(attempt: number): number {
+  const cappedAttempt = Math.max(1, Math.min(6, attempt));
+  const base = 250 * 2 ** (cappedAttempt - 1);
+  const jitter = Math.floor(Math.random() * 150);
+  return Math.min(3000, base + jitter);
+}
+
+function payloadToMessage(payload: unknown): string {
+  if (typeof payload === "string") {
+    return payload;
+  }
+  if (payload && typeof payload === "object") {
+    try {
+      return JSON.stringify(payload);
+    } catch {
+      return "Unserializable payload";
+    }
+  }
+  return String(payload);
+}
+
+class HTTPStatusError extends Error {
+  status: number;
+  payload: unknown;
+
+  constructor(status: number, payload: unknown) {
+    super(`HTTP ${status}: ${payloadToMessage(payload)}`);
+    this.name = "HTTPStatusError";
+    this.status = status;
+    this.payload = payload;
+  }
 }
 
 function providerFromServerEnv(): APIProvider | null {
@@ -67,33 +129,61 @@ function resolveProviderAndKey(body: RequestBody): { provider: APIProvider; apiK
 }
 
 async function postJson(url: string, init: RequestInit): Promise<unknown> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  let lastError: unknown;
 
-  try {
-    const response = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      cache: "no-store"
-    });
+  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const text = await response.text();
-    const payload = text ? JSON.parse(text) : {};
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+        cache: "no-store"
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${JSON.stringify(payload)}`);
+      const text = await response.text();
+      let payload: unknown = {};
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          payload = { raw: text };
+        }
+      }
+
+      if (response.ok) {
+        return payload;
+      }
+
+      const httpError = new HTTPStatusError(response.status, payload);
+      lastError = httpError;
+
+      const retryable = RETRYABLE_HTTP_STATUSES.has(response.status);
+      if (!retryable || attempt >= MAX_RETRY_ATTEMPTS) {
+        throw httpError;
+      }
+
+      const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
+      await sleep(retryAfterMs ?? retryDelayMs(attempt));
+    } catch (error) {
+      lastError = error;
+      const retryableError = isAbortError(error) || isNetworkError(error);
+      if (!retryableError || attempt >= MAX_RETRY_ATTEMPTS) {
+        throw error;
+      }
+      await sleep(retryDelayMs(attempt));
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return payload;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError instanceof Error ? lastError : new Error("Provider request failed after retries.");
 }
 
 export async function POST(request: NextRequest) {
   let resolvedProvider: APIProvider | null = null;
   let resolvedKeySource: "client" | "server_env" | null = null;
-  let resolvedApiKey: string | null = null;
 
   try {
     const body = (await request.json()) as RequestBody;
@@ -105,7 +195,6 @@ export async function POST(request: NextRequest) {
     const { provider, apiKey, keySource } = resolveProviderAndKey(body);
     resolvedProvider = provider;
     resolvedKeySource = keySource;
-    resolvedApiKey = apiKey ?? null;
     if (!apiKey) {
       return NextResponse.json(
         { error: "No API key available. Provide one in UI or set server env vars." },
@@ -282,14 +371,19 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     let message = error instanceof Error ? error.message : "Unknown error";
+    const httpStatus = error instanceof HTTPStatusError ? error.status : null;
     const isTogetherInvalidKey =
       resolvedProvider === "together" && typeof message === "string" && message.includes("invalid_api_key");
     const isOpenAIInvalidKey =
       resolvedProvider === "openAI" && typeof message === "string" && message.includes("invalid_api_key");
+    const isTransientProviderFailure =
+      httpStatus !== null && RETRYABLE_HTTP_STATUSES.has(httpStatus) && !isTogetherInvalidKey && !isOpenAIInvalidKey;
+
+    if (isTransientProviderFailure) {
+      message +=
+        " Tip: provider returned a transient server/rate-limit error after retries; this is usually not a credit depletion signal. Retry run, reduce request burst, or switch provider/model.";
+    }
     if (isTogetherInvalidKey && resolvedKeySource === "client") {
-      if (resolvedApiKey) {
-        message += ` Debug: received key suffix ${resolvedApiKey.slice(-4)} (len ${resolvedApiKey.length}).`;
-      }
       if (nonEmpty(process.env.TOGETHER_API_KEY)) {
         message += " Tip: clear the UI API Key field to use server TOGETHER_API_KEY, or paste the exact same key configured in Vercel.";
       } else {
@@ -297,9 +391,6 @@ export async function POST(request: NextRequest) {
       }
     }
     if (isOpenAIInvalidKey && resolvedKeySource === "client") {
-      if (resolvedApiKey) {
-        message += ` Debug: received key suffix ${resolvedApiKey.slice(-4)} (len ${resolvedApiKey.length}).`;
-      }
       if (nonEmpty(process.env.OPENAI_API_KEY)) {
         message += " Tip: clear the UI API Key field to use server OPENAI_API_KEY, or paste the exact same key you validated in terminal.";
       } else {

@@ -6,7 +6,7 @@ function normalizeBaseURL(value: string): string {
 }
 
 function guardianAuthHeaders(): Record<string, string> {
-  const endpointKey = (process.env.GUARDIAN_ENDPOINT_KEY ?? process.env.TOGETHER_API_KEY ?? "").trim();
+  const endpointKey = (process.env.GUARDIAN_ENDPOINT_KEY ?? "").trim();
   if (!endpointKey) return {};
   return { "X-Guardian-Key": endpointKey };
 }
