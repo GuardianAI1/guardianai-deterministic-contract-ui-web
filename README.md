@@ -67,3 +67,4 @@ In production systems, that same dynamic can remain invisible unless something o
 - For production, prefer `GUARDIAN_CORE_URL=https://guardianai.fr/core` and `GUARDIAN_GATE_URL=https://guardianai.fr/gate`.
 - Keep API keys on server env vars only.
 - Do not expose provider keys in client-side code.
+- Partner lab endpoint policy: [LAB_ACCESS_POLICY.md](./LAB_ACCESS_POLICY.md)
