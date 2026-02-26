@@ -2,6 +2,17 @@
 
 This is a web migration of the macOS SwiftUI Deterministic Contract Lab.
 
+## Framing
+
+GuardianAI doesn't detect wrong answers.  
+It detects when systems close faster than their constraints justify.
+
+In deterministic contracts, this shows up instantly because the constraint is binary.  
+In real pipelines, the same drift often unfolds gradually across steps and decisions.
+
+The lab demo isolates the mechanism.  
+In production systems, that same dynamic can remain invisible unless something observes it.
+
 ## What this includes
 
 - Deterministic contract experiment UI in browser
