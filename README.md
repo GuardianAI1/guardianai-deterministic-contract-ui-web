@@ -47,6 +47,7 @@ In production systems, that same dynamic can remain invisible unless something o
 
 - `GUARDIAN_CORE_URL` (default: `http://127.0.0.1:18101`)
 - `GUARDIAN_GATE_URL` (default: `http://127.0.0.1:18102`)
+- `GUARDIAN_ENDPOINT_KEY` (required when `/core/*` and `/gate/*` are key-protected at Nginx)
 - Optional server-side default keys:
   - `TOGETHER_API_KEY`
   - `OPENAI_API_KEY`
@@ -63,5 +64,6 @@ In production systems, that same dynamic can remain invisible unless something o
 ## Deploy notes
 
 - This project can deploy on Vercel.
+- For production, prefer `GUARDIAN_CORE_URL=https://guardianai.fr/core` and `GUARDIAN_GATE_URL=https://guardianai.fr/gate`.
 - Keep API keys on server env vars only.
 - Do not expose provider keys in client-side code.

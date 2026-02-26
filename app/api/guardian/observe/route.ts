@@ -33,6 +33,12 @@ function mapFinalGateDecision(value: string): GateState {
   return "CONTINUE";
 }
 
+function guardianAuthHeaders(): Record<string, string> {
+  const endpointKey = (process.env.GUARDIAN_ENDPOINT_KEY ?? process.env.TOGETHER_API_KEY ?? "").trim();
+  if (!endpointKey) return {};
+  return { "X-Guardian-Key": endpointKey };
+}
+
 async function requestJSON<T>(url: string, init: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -40,7 +46,14 @@ async function requestJSON<T>(url: string, init: RequestInit): Promise<T> {
   });
 
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
+  let payload: unknown = {};
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { raw: text };
+    }
+  }
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${JSON.stringify(payload)}`);
@@ -70,7 +83,7 @@ export async function POST(request: NextRequest) {
 
     const observeResponse = await requestJSON<GuardianObserveResponse>(`${coreURL}/observe`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...guardianAuthHeaders() },
       body: JSON.stringify(observePayload)
     });
 
@@ -82,7 +95,7 @@ export async function POST(request: NextRequest) {
 
     const gateResponse = await requestJSON<GuardianGateResponse>(`${gateURL}/decide`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...guardianAuthHeaders() },
       body: JSON.stringify(gatePayload)
     });
 
